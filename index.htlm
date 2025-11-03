@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fusée Spatiale Deluxe — FULL CODE</title>
+
+<style>
+body{
+  margin:0;background:black;color:white;overflow:hidden;
+  font-family:Arial;
+}
+canvas{
+  display:block;margin:auto;margin-top:10px;
+  background:radial-gradient(circle,#001933,#000);
+  border:3px solid #00eaff;box-shadow:0 0 20px #00eaff80;
+}
+#ui{
+  position:fixed;top:0;left:0;width:100%;height:100%;
+  display:flex;justify-content:center;align-items:center;
+  background:#000c;flex-direction:column;color:white;
+}
+button,input{
+  padding:10px 20px;font-size:20px;margin:8px;border:none;
+  border-radius:10px;cursor:pointer;
+}
+button{
+  background:linear-gradient(45deg,#00aaff,#0044ff);
+  color:white;font-weight:bold;
+}
+input{
+  background:#ffffff22;color:white;border:2px solid cyan;text-align:center;
+  border-radius:20px;
+}
+#scoreTxt{position:fixed;top:15px;left:15px;font-size:22px;display:none;}
+#pauseBtn{position:fixed;top:15px;right:15px;display:none;}
+</style>
+</head>
+<body>
+
+<div id="ui"><h1>🚀 Fusée Spatiale</h1><button id="start">Commencer</button></div>
+<div id="scoreTxt">Score: <span id="score">0</span></div>
+<button id="pauseBtn">⏸ Pause</button>
+<canvas id="game" width="600" height="800"></canvas>
+
+<script>
+/*============== AUDIO ==============*/
+let audio= new (window.AudioContext||webkitAudioContext)();
+function play(f,type="square",time=0.1){
+  let o=audio.createOscillator(), g=audio.createGain();
+  o.type=type; o.frequency.value=f;
+  o.connect(g); g.connect(audio.destination);
+  g.gain.setValueAtTime(.3,audio.currentTime);
+  g.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+time);
+  o.start(); o.stop(audio.currentTime+time);
+}
+const sndLaser=()=>play(600,"square",.08);
+const sndBonus=()=>play(900,"sine",.15);
+const sndExplosion=()=>{play(50,"sawtooth",.2);play(80,"triangle",.2);}
+const sndShield=()=>play(200,"sine",.4);
+
+/*============== VARIABLES ==============*/
+let cvs=document.getElementById("game"),ctx=cvs.getContext("2d");
+let ui=document.getElementById("ui"),start=document.getElementById("start");
+let scoreTxt=document.getElementById("scoreTxt"), scoreEl=document.getElementById("score");
+let pauseBtn=document.getElementById("pauseBtn");
+
+let score=0, nextBonus=100;
+let keys={}, game=false, paused=false, over=false;
+
+let player={x:280,y:720,w:40,h:60,shield:false,laser:false};
+let ast=[], bonus=[], ai=[], particles=[];
+let spawnT=0, spawnInt=60, fireCD=0;
+document.addEventListener("keydown",e=>keys[e.key]=true);
+document.addEventListener("keyup",e=>keys[e.key]=false);
+
+/*============== PARTICULES ==============*/
+function puff(x,y,c,n=10){
+  for(let i=0;i<n;i++)particles.push({
+    x,y,dx:(Math.random()*2-1)*2,dy:(Math.random()*2-1)*2,
+    size:3,life:20,color:c
+  });
+}
+function drawParticles(){
+  particles.forEach((p,i)=>{
+    p.x+=p.dx;p.y+=p.dy;p.life--;
+    ctx.globalAlpha=p.life/20;
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,6.28);ctx.fill();
+    ctx.globalAlpha=1;
+    if(p.life<=0)particles.splice(i,1);
+  });
+}
+
+/*============== GAME ==============*/
+function spawnAst(){let s=20+Math.random()*30;
+  ast.push({x:Math.random()*(600-s),y:-s,w:s,h:s,s:2+Math.random()*2+score/500});
+}
+function spawnBonus(){
+  let t=["shield","laser","score"][Math.random()*3|0];
+  bonus.push({x:Math.random()*560,y:-40,w:40,h:40,s:3,t});
+}
+function hit(a,b){
+  return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;
+}
+function drawShip(p,c="#00eaff"){
+  ctx.fillStyle=c;
+  ctx.fillRect(p.x+p.w*0.3,p.y+p.h*0.3,p.w*0.4,p.h*0.6);
+  ctx.fillStyle="cyan";
+  ctx.beginPath();ctx.arc(p.x+p.w/2,p.y+p.h/2,p.w*.12,0,6.28);ctx.fill();
+}
+function drawShield(p){
+  if(!p.shield)return;
+  let r=35+Math.sin(Date.now()/100)*3;
+  ctx.strokeStyle="#00ffaa";ctx.lineWidth=3;
+  ctx.beginPath();ctx.arc(p.x+p.w/2,p.y+p.h/2,r,0,6.28);ctx.stroke();
+}
+function useBonus(p,t){
+  sndBonus();
+  if(t=="shield"){p.shield=true;sndShield();setTimeout(()=>p.shield=false,60000);}
+  if(t=="laser"){p.laser=true;setTimeout(()=>p.laser=false,60000);}
+  if(t=="score"){score+=100;scoreEl.textContent=score;}
+}
+function end(){
+  game=false;scoreTxt.style.display="none";pauseBtn.style.display="none";
+  ui.style.display="flex";
+  ui.innerHTML=`<h1>GAME OVER</h1><p>Score: ${score}</p><button onclick="location.reload()">Rejouer</button>`;
+}
+function win(){
+  game=false;scoreTxt.style.display="none";pauseBtn.style.display="none";
+  ui.style.display="flex";
+  ui.innerHTML=`<h1>🏆 WIN 🏆</h1><p>Score: ${score}</p><button onclick="location.reload()">Rejouer</button>`;
+}
+
+/*============== LOOP ==============*/
+function loop(){
+  if(!game||paused)return;
+  ctx.clearRect(0,0,600,800);
+
+  if(keys.ArrowLeft&&player.x>0)player.x-=6;
+  if(keys.ArrowRight&&player.x<560)player.x+=6;
+  if(keys.ArrowUp&&player.y>0)player.y-=4;
+  if(keys.ArrowDown&&player.y<740)player.y+=4;
+
+  if(keys[" "]&&player.laser&&fireCD<=0){
+    sndLaser(); fireCD=15;
+    ast=ast.filter(a=>{
+      if(a.y>player.y-600&&a.x<player.x+40&&a.x+a.w>player.x){
+        puff(a.x,a.y,"orange",15); sndExplosion(); score+=10;
+        scoreEl.textContent=score;
+        return false;
+      }return true;
+    });
+  }
+  if(fireCD>0)fireCD--;
+
+  puff(player.x+player.w/2,player.y+player.h,"#ffaa00",1);
+  drawParticles();
+  drawShip(player);drawShield(player);
+
+  spawnT++;
+  if(spawnT>=spawnInt){spawnAst();spawnT=0;if(spawnInt>25)spawnInt-=0.4;}
+  if(score>=nextBonus){spawnBonus();nextBonus+=100;}
+
+  ast.forEach((a,i)=>{
+    a.y+=a.s;
+    ctx.fillStyle="#888";ctx.beginPath();
+    ctx.arc(a.x+a.w/2,a.y+a.h/2,a.w/2,0,6.28);ctx.fill();
+    if(a.y>800){ast.splice(i,1);score+=10;scoreEl.textContent=score;}
+    if(hit(player,a)){
+      if(player.shield){puff(a.x,a.y,"#00ffea",15);ast.splice(i,1);}
+      else{puff(player.x,player.y,"red",20);sndExplosion();return end();}
+    }
+  });
+
+  bonus.forEach((b,i)=>{
+    b.y+=b.s;
+    ctx.font="30px Arial";
+    ctx.fillText(b.t=="shield"?"🛡️":b.t=="laser"?"🔫":"🏆",b.x,b.y+30);
+    if(hit(player,b)){useBonus(player,b.t);bonus.splice(i,1);}
+  });
+
+  if(score>=5000)return win();
+  requestAnimationFrame(loop);
+}
+
+/*============== PAUSE ==============*/
+pauseBtn.onclick=()=>{
+  paused=!paused;
+  if(!paused)requestAnimationFrame(loop);
+};
+
+/*============== START ==============*/
+start.onclick=()=>{
+  ui.style.display="none";game=true;score=0;
+  scoreTxt.style.display="block";pauseBtn.style.display="block";
+  requestAnimationFrame(loop);
+};
+</script>
+</body>
+</html>
